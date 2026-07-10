@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Congress Trade Tracker</title>
+<style>
+:root{
+  --surface:#fcfcfb; --plane:#f9f9f7; --ink:#0b0b0b; --ink2:#52514e;
+  --muted:#898781; --grid:#e1e0d9; --border:rgba(11,11,11,.10);
+  --buy:#0ca30c; --buy-text:#006300; --sell:#d03b3b;
+  --accent:#2a78d6; --accent-soft:#cde2fb;
+  --warn-bg:#fdf1f1; --warn-line:#d03b3b;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --surface:#1a1a19; --plane:#0d0d0d; --ink:#ffffff; --ink2:#c3c2b7;
+    --muted:#898781; --grid:#2c2c2a; --border:rgba(255,255,255,.10);
+    --buy:#0ca30c; --buy-text:#0ca30c; --sell:#d03b3b;
+    --accent:#3987e5; --accent-soft:#184f95;
+    --warn-bg:#2a1414; --warn-line:#d03b3b;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--plane);color:var(--ink);
+  font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{max-width:1060px;margin:0 auto;padding:20px 16px 60px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;margin:8px 0 4px}
+header h1{font-size:22px;font-weight:800;margin:0}
+#updated{font-size:12px;color:var(--muted)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:14px 0}
+.tile{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+.tile .v{font-size:24px;font-weight:800;line-height:1.1}
+.tile .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-top:4px}
+section{margin:26px 0}
+h2{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin:0 0 4px}
+.sub{font-size:12px;color:var(--muted);margin:0 0 10px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+.warnbox{background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:10px;
+  padding:12px 16px;color:var(--sell);font-size:13px;margin:10px 0}
+ul.read{margin:0;padding-left:20px}
+ul.read li{margin:6px 0}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);
+  text-align:left;padding:7px 10px;border-bottom:2px solid var(--grid);
+  cursor:pointer;user-select:none;white-space:nowrap}
+th.r,td.r{text-align:right}
+td{padding:7px 10px;border-bottom:1px solid var(--grid);vertical-align:top}
+td.num{font-variant-numeric:tabular-nums}
+tr:hover td{background:color-mix(in srgb, var(--accent) 6%, transparent)}
+.badge{display:inline-block;padding:1px 8px;border-radius:9px;font-size:11px;font-weight:700}
+.badge.buy{color:#fff;background:var(--buy)}
+.badge.sell{color:#fff;background:var(--sell)}
+.chip{display:inline-block;padding:0 7px;margin:1px 2px 1px 0;border-radius:8px;font-size:11px;
+  color:var(--accent);background:color-mix(in srgb, var(--accent) 14%, transparent)}
+.mem b{display:block}
+.mem span{font-size:11px;color:var(--muted)}
+.new-dot{display:inline-block;width:7px;height:7px;border-radius:4px;background:var(--accent);
+  margin-right:5px;vertical-align:1px}
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
+.filters input,.filters select{background:var(--surface);color:var(--ink);
+  border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:13px}
+.filters input{min-width:220px}
+.pill{border:1px solid var(--border);background:var(--surface);color:var(--ink2);
+  border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer}
+.pill.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.perf{margin:12px 0;padding:14px 16px;background:var(--surface);
+  border:1px solid var(--border);border-radius:12px}
+.perf .head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap}
+.perf .ret{font-size:26px;font-weight:800}
+.perf .ret.up{color:var(--buy-text)} .perf .ret.dn{color:var(--sell)}
+.rank{display:inline-flex;width:22px;height:22px;border-radius:11px;background:var(--accent);
+  color:#fff;font-size:12px;font-weight:700;align-items:center;justify-content:center;margin-right:8px}
+.flow{display:flex;align-items:center;gap:8px}
+.flowbar{position:relative;height:14px;flex:1;max-width:260px;background:var(--grid);border-radius:4px;overflow:hidden}
+.flowbar i{position:absolute;top:0;bottom:0}
+.flowbar .b{background:var(--accent)} .flowbar .s{background:var(--sell)}
+details.more{margin-top:6px}
+details.more summary{cursor:pointer;color:var(--accent);font-size:12px}
+footer{margin-top:40px;padding:14px 16px;border:1px solid var(--grid);border-radius:10px;
+  font-size:12px;color:var(--ink2);background:var(--surface)}
+#loading{padding:60px;text-align:center;color:var(--muted)}
+.count{font-size:12px;color:var(--muted);margin-left:6px}
+@media (max-width:700px){ .hide-m{display:none} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Congress Trade Tracker</h1>
+    <span id="updated"></span>
+  </header>
+  <div id="loading">Loading latest data…</div>
+  <div id="app" style="display:none">
+    <div id="warnings"></div>
+    <div class="tiles" id="tiles"></div>
+
+    <section id="sec-read">
+      <h2>📝 Today's read</h2>
+      <p class="sub">Auto-generated summary of the latest updates and trends</p>
+      <div class="card"><ul class="read" id="read"></ul></div>
+    </section>
+
+    <section id="sec-trends">
+      <h2>📈 Trends across Congress</h2>
+      <p class="sub" id="trends-sub"></p>
+      <div class="card" id="trends"></div>
+    </section>
+
+    <section id="sec-feed">
+      <h2>📅 Disclosure feed</h2>
+      <p class="sub">Every disclosure the tracker has surfaced, newest first. <span class="new-dot"></span>= new in the latest update. Price = actual close on the transaction date.</p>
+      <div class="filters">
+        <input id="q" placeholder="Search ticker, member, committee…">
+        <button class="pill on" data-f="all">All</button>
+        <button class="pill" data-f="buy">Buys</button>
+        <button class="pill" data-f="sell">Sells</button>
+        <select id="chamber"><option value="">Both chambers</option>
+          <option>House</option><option>Senate</option></select>
+        <select id="range">
+          <option value="">All time</option><option value="7">Last 7 days</option>
+          <option value="30">Last 30 days</option><option value="90">Last 90 days</option></select>
+      </div>
+      <div class="card" style="padding:0;overflow-x:auto">
+        <table id="feedtbl">
+          <thead><tr>
+            <th data-k="filed">Filed</th><th data-k="txn" class="hide-m">Traded</th>
+            <th data-k="action">Action</th><th data-k="ticker">Ticker</th>
+            <th data-k="px_close" class="r">Price</th>
+            <th data-k="amount_mid" class="r">Amount</th>
+            <th data-k="member">Member</th><th class="hide-m">Committees</th>
+            <th data-k="lag_days" class="r hide-m">Lag</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="sub" style="margin-top:8px" id="feedcount"></div>
+    </section>
+
+    <section id="sec-perf">
+      <h2>🏆 Top performers · trailing 12 months</h2>
+      <p class="sub">Simulated: midpoint of disclosed range, marked to market. Excludes pre-existing positions — directional, not exact.</p>
+      <div id="perf"></div>
+    </section>
+
+    <section id="sec-alpaca">
+      <h2>Paper account</h2>
+      <p class="sub">Read-only Alpaca paper account — no orders are ever placed by this tracker.</p>
+      <div class="tiles" id="alpaca-tiles"></div>
+      <div class="card" id="alpaca-pos" style="display:none;padding:0;overflow-x:auto"></div>
+    </section>
+
+    <footer>
+      <b>How to read this.</b> Disclosures lag trades 30–45 days under the STOCK Act — this is the
+      freshest public data. <b>Lag</b> is trade-to-disclosure days; smaller is fresher. Price is the
+      actual market close on the transaction date (filings carry a date, never a time). Disclosed
+      amounts are ranges; simulated returns assume midpoints. Filings never include share counts.
+      Nothing here is investment advice, and no trades are placed automatically.
+    </footer>
+  </div>
+</div>
+
+<script>
+"use strict";
+let DATA=null, sortK="filed", sortDir=-1, actionF="all";
+
+const $=s=>document.querySelector(s);
+const fmt$=x=>(x<0?"-":"")+"$"+Math.abs(Math.round(x)).toLocaleString();
+const fmtP=x=>x==null?"—":"$"+x.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const dshort=iso=>{const d=new Date(iso+"T12:00:00");return d.toLocaleDateString(undefined,{month:"short",day:"numeric"})};
+
+function badge(a){return `<span class="badge ${a}">${a==="buy"?"BUY":"SELL"}</span>`}
+function chips(cs){return (cs||[]).map(c=>`<span class="chip">${esc(c)}</span>`).join("")||"<span class='count'>—</span>"}
+
+function render(){
+  const D=DATA;
+  $("#updated").textContent="Updated "+new Date(D.generated_at).toLocaleString();
+  // warnings
+  $("#warnings").innerHTML=(D.warnings||[]).length?
+    `<div class="warnbox"><b>⚠ Data warning — report incomplete.</b> ${D.warnings.map(esc).join("; ")}</div>`:"";
+  // tiles
+  const topRet=D.performers.length?D.performers[0].return_pct:null;
+  $("#tiles").innerHTML=[
+    [D.new_count,"new in last update"],
+    [D.feed.length,"disclosures tracked"],
+    [topRet==null?"—":(topRet>0?"+":"")+topRet+"%","top LTM return"],
+    [D.trends?D.trends.window_days+"d":"—","trend window"],
+  ].map(([v,l])=>`<div class="tile"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
+  // read
+  $("#read").innerHTML=(D.review||[]).map(s=>`<li>${esc(s)}</li>`).join("")||"<li>No summary for this run.</li>";
+  // trends
+  renderTrends();
+  renderFeed();
+  renderPerf();
+  renderAlpaca();
+  $("#loading").style.display="none";$("#app").style.display="";
+}
+
+function renderTrends(){
+  const T=DATA.trends;
+  if(!T){$("#sec-trends").style.display="none";return}
+  $("#trends-sub").textContent=`Where multiple members move the same way · last ${T.window_days} days · counts are distinct members`;
+  const list=(items,dir)=>items.length?`<table><thead><tr><th>Ticker</th><th class="r">${dir==="buy"?"Buyers":"Sellers"}</th><th class="r">${dir==="buy"?"Sellers":"Buyers"}</th><th>Sector</th></tr></thead><tbody>`+
+    items.map(t=>`<tr><td><b>${esc(t.ticker)}</b></td><td class="r num" style="color:var(--${dir==="buy"?"buy-text":"sell"});font-weight:700">${dir==="buy"?t.buyers:t.sellers}</td><td class="r num">${(dir==="buy"?t.sellers:t.buyers)||"—"}</td><td class="count">${esc(t.sector)}</td></tr>`).join("")+"</tbody></table>"
+    :`<div class="count">No multi-member cluster.</div>`;
+  const maxUsd=Math.max(1,...T.sector_flows.map(s=>s.buy_usd+s.sell_usd));
+  const flows=T.sector_flows.map(s=>{
+    const bw=(s.buy_usd/maxUsd*100).toFixed(1), sw=(s.sell_usd/maxUsd*100).toFixed(1);
+    const lean=s.buyers>s.sellers?`<span style="color:var(--buy-text);font-weight:700">net buy</span>`:
+               s.sellers>s.buyers?`<span style="color:var(--sell);font-weight:700">net sell</span>`:"mixed";
+    return `<tr><td><b>${esc(s.sector)}</b></td>
+      <td class="r num">${s.buyers}</td><td class="r num">${s.sellers}</td>
+      <td><div class="flow"><div class="flowbar"><i class="b" style="left:0;width:${bw}%"></i><i class="s" style="left:${bw}%;width:${sw}%"></i></div></div></td>
+      <td>${lean}</td><td class="r num count">${fmt$(s.net_usd)}</td></tr>`;
+  }).join("");
+  $("#trends").innerHTML=
+    `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px">
+      <div><div style="font-weight:700;color:var(--buy-text);font-size:12px;margin-bottom:6px">▲ Most members buying</div>${list(T.consensus_buys,"buy")}</div>
+      <div><div style="font-weight:700;color:var(--sell);font-size:12px;margin-bottom:6px">▼ Most members selling</div>${list(T.consensus_sells,"sell")}</div>
+    </div>
+    ${T.sector_flows.length?`<div style="margin-top:16px;font-weight:700;font-size:12px">Sector flows <span class="count">buy $ (blue) vs sell $ (red), scaled to largest sector</span></div>
+    <table style="margin-top:6px"><thead><tr><th>Sector</th><th class="r">Buying</th><th class="r">Selling</th><th>Flow</th><th>Lean</th><th class="r">Net $</th></tr></thead><tbody>${flows}</tbody></table>`:""}`;
+}
+
+function feedRows(){
+  const q=($("#q").value||"").toLowerCase();
+  const ch=$("#chamber").value, days=$("#range").value;
+  const cutoff=days?new Date(Date.now()-days*864e5).toISOString().slice(0,10):null;
+  const newSet=new Set(DATA.new_keys||[]);
+  let rows=DATA.feed.filter(r=>
+    (actionF==="all"||r.action===actionF)&&
+    (!ch||r.chamber===ch)&&
+    (!cutoff||r.filed>=cutoff)&&
+    (!q||r.ticker.toLowerCase().includes(q)||r.member.toLowerCase().includes(q)||
+      (r.committees||[]).join(" ").toLowerCase().includes(q)||(r.sector||"").toLowerCase().includes(q)));
+  rows=rows.slice().sort((a,b)=>{
+    let va=a[sortK],vb=b[sortK];
+    if(va==null)return 1;if(vb==null)return -1;
+    return (va<vb?-1:va>vb?1:0)*sortDir;
+  });
+  return {rows,newSet};
+}
+
+function renderFeed(){
+  const {rows,newSet}=feedRows();
+  $("#feedtbl tbody").innerHTML=rows.slice(0,300).map(r=>`<tr>
+    <td class="num">${newSet.has(r.key)?'<span class="new-dot"></span>':""}${dshort(r.filed)}</td>
+    <td class="num hide-m">${dshort(r.txn)}</td>
+    <td>${badge(r.action)}</td>
+    <td><b>${esc(r.ticker)}</b><div class="count">${esc(r.sector||"")}</div></td>
+    <td class="r num"><b>${fmtP(r.px_close)}</b>${r.px_low!=null?`<div class="count">${fmtP(r.px_low)}–${fmtP(r.px_high)}</div>`:""}</td>
+    <td class="r num">${esc(r.amount)}</td>
+    <td class="mem"><b>${esc(r.member)}</b><span>${esc(r.chamber)}</span></td>
+    <td class="hide-m">${chips(r.committees)}</td>
+    <td class="r num hide-m">${r.lag_days}d</td>
+  </tr>`).join("");
+  $("#feedcount").textContent=`${rows.length} disclosures match`+(rows.length>300?" (showing 300)":"");
+}
+
+function renderPerf(){
+  $("#perf").innerHTML=DATA.performers.map(p=>{
+    const cls=p.return_pct>=0?"up":"dn";
+    const trs=p.trades.slice(0,12).map(t=>`<tr>
+      <td class="num">${dshort(t.txn)}</td><td>${badge(t.action)}</td>
+      <td><b>${esc(t.ticker)}</b></td>
+      <td class="r num">${esc(t.amount)}</td>
+      <td class="r num"><b>${fmtP(t.px_close)}</b></td>
+      <td class="r num hide-m">${t.px_low!=null?fmtP(t.px_low)+"–"+fmtP(t.px_high):"—"}</td>
+      <td class="r num">${t.lag_days}d</td></tr>`).join("");
+    const more=p.trades.length>12?`<details class="more"><summary>+ ${p.trades.length-12} more trades</summary><table><tbody>`+
+      p.trades.slice(12).map(t=>`<tr><td class="num">${dshort(t.txn)}</td><td>${badge(t.action)}</td><td><b>${esc(t.ticker)}</b></td><td class="r num">${esc(t.amount)}</td><td class="r num">${fmtP(t.px_close)}</td><td class="r num hide-m">${t.px_low!=null?fmtP(t.px_low)+"–"+fmtP(t.px_high):"—"}</td><td class="r num">${t.lag_days}d</td></tr>`).join("")+"</tbody></table></details>":"";
+    return `<div class="perf">
+      <div class="head"><div>
+        <span class="rank">${p.rank}</span><b style="font-size:16px">${esc(p.member)}</b>
+        <div class="count" style="margin:3px 0 6px">${esc(p.chamber)} · ${p.trade_count} trades · ${fmt$(p.notional)} notional</div>
+        <div>${chips(p.committees)}</div>
+      </div>
+      <div style="text-align:right"><div class="ret ${cls}">${p.return_pct>0?"+":""}${p.return_pct}%</div>
+      <div class="count">LTM return</div></div></div>
+      <div style="margin-top:10px;overflow-x:auto"><table>
+        <thead><tr><th>Date</th><th>Action</th><th>Ticker</th><th class="r">Amount</th><th class="r">Price</th><th class="r hide-m">Day range</th><th class="r">Lag</th></tr></thead>
+        <tbody>${trs}</tbody></table>${more}</div>
+    </div>`;
+  }).join("")||"<div class='count'>No ranking available.</div>";
+}
+
+function renderAlpaca(){
+  const A=DATA.alpaca;
+  $("#alpaca-tiles").innerHTML=[
+    [fmt$(A.equity),"equity"],[fmt$(A.cash),"cash"],[A.positions.length,"positions"],
+  ].map(([v,l])=>`<div class="tile"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
+  if(A.positions.length){
+    $("#alpaca-pos").style.display="";
+    $("#alpaca-pos").innerHTML="<table><thead><tr><th>Ticker</th><th class='r'>Qty</th><th class='r'>Avg</th><th class='r'>Value</th><th class='r'>P&L</th></tr></thead><tbody>"+
+      A.positions.map(p=>`<tr><td><b>${esc(p.ticker)}</b></td><td class="r num">${p.qty}</td><td class="r num">${fmtP(p.avg)}</td><td class="r num">${fmt$(p.mv)}</td><td class="r num" style="color:var(--${p.plpc>=0?"buy-text":"sell"})">${(p.plpc*100).toFixed(1)}%</td></tr>`).join("")+"</tbody></table>";
+  }
+}
+
+// events
+document.addEventListener("click",e=>{
+  const p=e.target.closest(".pill");if(p){document.querySelectorAll(".pill").forEach(x=>x.classList.remove("on"));p.classList.add("on");actionF=p.dataset.f;renderFeed();}
+  const th=e.target.closest("th[data-k]");if(th){const k=th.dataset.k;
+    if(sortK===k)sortDir*=-1;else{sortK=k;sortDir=-1}renderFeed();}
+});
+["q","chamber","range"].forEach(id=>document.getElementById(id).addEventListener("input",renderFeed));
+
+async function load(){
+  try{
+    const r=await fetch("data.json?t="+Date.now(),{cache:"no-store"});
+    DATA=await r.json();render();
+  }catch(e){$("#loading").textContent="Could not load data.json — "+e;}
+}
+load();
+setInterval(load, 10*60*1000); // poll every 10 minutes
+</script>
+</body>
+</html>
