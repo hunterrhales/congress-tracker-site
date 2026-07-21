@@ -1,0 +1,10 @@
+# Secrets and local-only artifacts — never commit these
+pipeline/.env
+.env
+pipeline/venv/
+venv/
+__pycache__/
+*.pyc
+pipeline/state/
+pipeline/.cache/prices/
+pipeline/.cache/house/

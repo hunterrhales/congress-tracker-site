@@ -342,6 +342,8 @@ function renderPerf(){
 
 function renderAlpaca(){
   const A=DATA.alpaca;
+  if(!A){$("#sec-alpaca").style.display="none";return}
+  $("#sec-alpaca").style.display="";
   $("#alpaca-tiles").innerHTML=[
     [fmt$(A.equity),"equity"],[fmt$(A.cash),"cash"],[A.positions.length,"positions"],
   ].map(([v,l])=>`<div class="tile"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
