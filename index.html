@@ -78,6 +78,20 @@ tr:hover td{background:color-mix(in srgb, var(--accent) 6%, transparent)}
 .flowbar .b{background:var(--accent)} .flowbar .s{background:var(--sell)}
 details.more{margin-top:6px}
 details.more summary{cursor:pointer;color:var(--accent);font-size:12px}
+tr.feedrow{cursor:pointer}
+tr.feedrow td:first-child::before{content:"▸";color:var(--muted);margin-right:6px;font-size:10px;display:inline-block;transition:transform .15s}
+tr.feedrow.open td:first-child::before{transform:rotate(90deg)}
+tr.detail td{background:color-mix(in srgb, var(--accent) 5%, transparent);padding:12px 16px}
+.detail-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 20px}
+.detail-grid .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.detail-grid .v{font-size:13px;margin-top:2px}
+.recent{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0 4px}
+.recent .rc{flex:1;min-width:200px;border:1px solid var(--border);border-radius:10px;padding:9px 12px;background:var(--plane)}
+.recent .rc .lab{font-size:10px;text-transform:uppercase;letter-spacing:.4px;font-weight:700}
+.recent .rc.b .lab{color:var(--buy-text)} .recent .rc.s .lab{color:var(--sell)}
+.recent .rc .d{font-size:13px;margin-top:3px}
+.recent .rc .m{font-size:11px;color:var(--muted)}
+.pnl{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--ink2);margin-top:6px}
 footer{margin-top:40px;padding:14px 16px;border:1px solid var(--grid);border-radius:10px;
   font-size:12px;color:var(--ink2);background:var(--surface)}
 #loading{padding:60px;text-align:center;color:var(--muted)}
@@ -110,17 +124,19 @@ footer{margin-top:40px;padding:14px 16px;border:1px solid var(--grid);border-rad
 
     <section id="sec-feed">
       <h2>📅 Disclosure feed</h2>
-      <p class="sub">Every disclosure the tracker has surfaced, newest first. <span class="new-dot"></span>= new in the latest update. Price = actual close on the transaction date.</p>
+      <p class="sub" id="feed-sub">Every disclosure filed recently, newest first. <span class="new-dot"></span>= new since the last refresh. Click any row for full detail. Price = actual close on the transaction date.</p>
       <div class="filters">
-        <input id="q" placeholder="Search ticker, member, committee…">
+        <input id="q" placeholder="Search ticker, member, committee, sector…">
         <button class="pill on" data-f="all">All</button>
         <button class="pill" data-f="buy">Buys</button>
         <button class="pill" data-f="sell">Sells</button>
         <select id="chamber"><option value="">Both chambers</option>
           <option>House</option><option>Senate</option></select>
+        <select id="committee"><option value="">All committees</option></select>
         <select id="range">
-          <option value="">All time</option><option value="7">Last 7 days</option>
-          <option value="30">Last 30 days</option><option value="90">Last 90 days</option></select>
+          <option value="">Any date</option><option value="7">Last 7 days</option>
+          <option value="30">Last 30 days</option><option value="60">Last 60 days</option></select>
+        <button class="pill" id="reset">Reset</button>
       </div>
       <div class="card" style="padding:0;overflow-x:auto">
         <table id="feedtbl">
@@ -183,11 +199,16 @@ function render(){
   // tiles
   const topRet=D.performers.length?D.performers[0].return_pct:null;
   $("#tiles").innerHTML=[
-    [D.new_count,"new in last update"],
-    [D.feed.length,"disclosures tracked"],
+    [D.feed.length,`disclosures · last ${D.feed_days||60}d`],
+    [D.new_count,"new since last refresh"],
     [topRet==null?"—":(topRet>0?"+":"")+topRet+"%","top LTM return"],
     [D.trends?D.trends.window_days+"d":"—","trend window"],
   ].map(([v,l])=>`<div class="tile"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
+  // committee dropdown
+  const csel=$("#committee");
+  if(csel.options.length<=1 && (D.committee_options||[]).length){
+    csel.insertAdjacentHTML("beforeend",D.committee_options.map(c=>`<option>${esc(c)}</option>`).join(""));
+  }
   // read
   $("#read").innerHTML=(D.review||[]).map(s=>`<li>${esc(s)}</li>`).join("")||"<li>No summary for this run.</li>";
   // trends
@@ -226,12 +247,13 @@ function renderTrends(){
 
 function feedRows(){
   const q=($("#q").value||"").toLowerCase();
-  const ch=$("#chamber").value, days=$("#range").value;
+  const ch=$("#chamber").value, days=$("#range").value, cmte=$("#committee").value;
   const cutoff=days?new Date(Date.now()-days*864e5).toISOString().slice(0,10):null;
   const newSet=new Set(DATA.new_keys||[]);
   let rows=DATA.feed.filter(r=>
     (actionF==="all"||r.action===actionF)&&
     (!ch||r.chamber===ch)&&
+    (!cmte||(r.committees||[]).includes(cmte))&&
     (!cutoff||r.filed>=cutoff)&&
     (!q||r.ticker.toLowerCase().includes(q)||r.member.toLowerCase().includes(q)||
       (r.committees||[]).join(" ").toLowerCase().includes(q)||(r.sector||"").toLowerCase().includes(q)));
@@ -243,9 +265,28 @@ function feedRows(){
   return {rows,newSet};
 }
 
+function detailRow(r){
+  const rng=r.px_low!=null?`${fmtP(r.px_low)} – ${fmtP(r.px_high)}`:"—";
+  const src=r.source_url?`<a href="${esc(r.source_url)}" target="_blank" rel="noopener" style="color:var(--accent)">view filing ↗</a>`:"—";
+  return `<tr class="detail"><td colspan="9"><div class="detail-grid">
+    <div><div class="k">Member</div><div class="v">${esc(r.member)} · ${esc(r.chamber)}${r.state?" · "+esc(r.state):""}</div></div>
+    <div><div class="k">Committees</div><div class="v">${chips(r.committees)}</div></div>
+    <div><div class="k">Asset</div><div class="v">${esc(r.asset||r.ticker)}</div></div>
+    <div><div class="k">Sector</div><div class="v">${esc(r.sector||"—")}</div></div>
+    <div><div class="k">Action</div><div class="v">${badge(r.action)} ${esc(r.owner||"")}</div></div>
+    <div><div class="k">Disclosed amount</div><div class="v">${esc(r.amount)}</div></div>
+    <div><div class="k">Price that day (close)</div><div class="v">${fmtP(r.px_close)}</div></div>
+    <div><div class="k">Day range</div><div class="v">${rng}</div></div>
+    <div><div class="k">Transaction date</div><div class="v">${r.txn}</div></div>
+    <div><div class="k">Filed / disclosed</div><div class="v">${r.filed} (${r.lag_days}d lag)</div></div>
+    <div><div class="k">Source</div><div class="v">${src}</div></div>
+  </div></td></tr>`;
+}
+
 function renderFeed(){
   const {rows,newSet}=feedRows();
-  $("#feedtbl tbody").innerHTML=rows.slice(0,300).map(r=>`<tr>
+  const shown=rows.slice(0,300);
+  $("#feedtbl tbody").innerHTML=shown.map(r=>`<tr class="feedrow" data-key="${esc(r.key)}">
     <td class="num">${newSet.has(r.key)?'<span class="new-dot"></span>':""}${dshort(r.filed)}</td>
     <td class="num hide-m">${dshort(r.txn)}</td>
     <td>${badge(r.action)}</td>
@@ -256,7 +297,15 @@ function renderFeed(){
     <td class="hide-m">${chips(r.committees)}</td>
     <td class="r num hide-m">${r.lag_days}d</td>
   </tr>`).join("");
-  $("#feedcount").textContent=`${rows.length} disclosures match`+(rows.length>300?" (showing 300)":"");
+  $("#feedcount").textContent=`${rows.length} disclosures match`+(rows.length>300?" (showing 300 — narrow with filters)":"");
+}
+
+function recentCard(t,kind){
+  if(!t)return `<div class="rc ${kind==='buy'?'b':'s'}"><div class="lab">Most recent ${kind}</div><div class="d count">none in window</div></div>`;
+  return `<div class="rc ${kind==='buy'?'b':'s'}">
+    <div class="lab">Most recent ${kind}</div>
+    <div class="d"><b>${esc(t.ticker)}</b> · ${esc(t.amount)} @ ${fmtP(t.px_close)}</div>
+    <div class="m">${t.txn} · ${esc(t.sector||"")} · disclosed ${dshort(t.filed)}</div></div>`;
 }
 
 function renderPerf(){
@@ -271,6 +320,8 @@ function renderPerf(){
       <td class="r num">${t.lag_days}d</td></tr>`).join("");
     const more=p.trades.length>12?`<details class="more"><summary>+ ${p.trades.length-12} more trades</summary><table><tbody>`+
       p.trades.slice(12).map(t=>`<tr><td class="num">${dshort(t.txn)}</td><td>${badge(t.action)}</td><td><b>${esc(t.ticker)}</b></td><td class="r num">${esc(t.amount)}</td><td class="r num">${fmtP(t.px_close)}</td><td class="r num hide-m">${t.px_low!=null?fmtP(t.px_low)+"–"+fmtP(t.px_high):"—"}</td><td class="r num">${t.lag_days}d</td></tr>`).join("")+"</tbody></table></details>":"";
+    const holds=(p.open_positions||[]).length?
+      `<div class="pnl"><span><b>Still holding:</b> ${p.open_positions.map(o=>esc(o.ticker)+" (~"+o.shares+" @ "+fmtP(o.avg)+")").join(", ")}</span></div>`:"";
     return `<div class="perf">
       <div class="head"><div>
         <span class="rank">${p.rank}</span><b style="font-size:16px">${esc(p.member)}</b>
@@ -279,6 +330,9 @@ function renderPerf(){
       </div>
       <div style="text-align:right"><div class="ret ${cls}">${p.return_pct>0?"+":""}${p.return_pct}%</div>
       <div class="count">LTM return</div></div></div>
+      <div class="pnl"><span>Realized ${fmt$(p.realized)}</span><span>Unrealized ${fmt$(p.unrealized)}</span></div>
+      <div class="recent">${recentCard(p.last_buy,'buy')}${recentCard(p.last_sell,'sell')}</div>
+      ${holds}
       <div style="margin-top:10px;overflow-x:auto"><table>
         <thead><tr><th>Date</th><th>Action</th><th>Ticker</th><th class="r">Amount</th><th class="r">Price</th><th class="r hide-m">Day range</th><th class="r">Lag</th></tr></thead>
         <tbody>${trs}</tbody></table>${more}</div>
@@ -300,11 +354,27 @@ function renderAlpaca(){
 
 // events
 document.addEventListener("click",e=>{
-  const p=e.target.closest(".pill");if(p){document.querySelectorAll(".pill").forEach(x=>x.classList.remove("on"));p.classList.add("on");actionF=p.dataset.f;renderFeed();}
-  const th=e.target.closest("th[data-k]");if(th){const k=th.dataset.k;
-    if(sortK===k)sortDir*=-1;else{sortK=k;sortDir=-1}renderFeed();}
+  const p=e.target.closest(".pill[data-f]");
+  if(p){document.querySelectorAll(".pill[data-f]").forEach(x=>x.classList.remove("on"));p.classList.add("on");actionF=p.dataset.f;renderFeed();return;}
+  if(e.target.id==="reset"){
+    $("#q").value="";$("#chamber").value="";$("#committee").value="";$("#range").value="";
+    actionF="all";document.querySelectorAll(".pill[data-f]").forEach(x=>x.classList.toggle("on",x.dataset.f==="all"));
+    renderFeed();return;
+  }
+  const th=e.target.closest("th[data-k]");
+  if(th){const k=th.dataset.k;if(sortK===k)sortDir*=-1;else{sortK=k;sortDir=-1}renderFeed();return;}
+  // expand/collapse a feed row for full detail
+  const row=e.target.closest("tr.feedrow");
+  if(row&&e.target.tagName!=="A"){
+    const open=row.classList.toggle("open");
+    const next=row.nextElementSibling;
+    if(open){
+      const r=DATA.feed.find(x=>x.key===row.dataset.key);
+      if(r)row.insertAdjacentHTML("afterend",detailRow(r));
+    }else if(next&&next.classList.contains("detail")){next.remove();}
+  }
 });
-["q","chamber","range"].forEach(id=>document.getElementById(id).addEventListener("input",renderFeed));
+["q","chamber","committee","range"].forEach(id=>document.getElementById(id).addEventListener("input",renderFeed));
 
 async function load(){
   try{
