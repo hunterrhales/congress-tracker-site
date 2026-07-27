@@ -115,12 +115,12 @@ def main() -> int:
     # === Normalize ===
     trades = all_trades(senate_txns, house_txns)
     ltm_trades = [t for t in trades if t.txn_date >= ltm_cutoff]
-    # The SITE feed shows every disclosure filed in the last `feed_days` (not the
-    # email-era "new since last run" diff), so it's never mysteriously empty.
-    feed_cutoff = today - timedelta(days=args.feed_days)
-    feed_trades = [t for t in trades if t.notification_date >= feed_cutoff]
+    # The site loads the FULL trailing-12-month history so the per-stock and
+    # per-person drill-downs are complete. The main feed table still defaults
+    # to the last `feed_days` (client-side) so it isn't overwhelming.
+    feed_trades = ltm_trades
     print(f"  {len(trades)} priceable trades parsed "
-          f"({len(ltm_trades)} in LTM window, {len(feed_trades)} filed in last {args.feed_days}d)")
+          f"({len(feed_trades)} in the 12-month history; table defaults to last {args.feed_days}d)")
 
     # === Rank ===
     print("  pricing + ranking (this may take a minute on first run)...")

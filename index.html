@@ -92,6 +92,15 @@ tr.detail td{background:color-mix(in srgb, var(--accent) 5%, transparent);paddin
 .recent .rc .d{font-size:13px;margin-top:3px}
 .recent .rc .m{font-size:11px;color:var(--muted)}
 .pnl{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--ink2);margin-top:6px}
+a.lnk{color:var(--accent);text-decoration:none;cursor:pointer;border-bottom:1px dotted color-mix(in srgb,var(--accent) 45%,transparent)}
+a.lnk:hover{border-bottom-style:solid}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:50;display:flex;align-items:flex-start;justify-content:center;padding:24px 12px;overflow-y:auto}
+.modal-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;max-width:820px;width:100%;padding:20px 22px 24px;position:relative;box-shadow:0 20px 60px rgba(0,0,0,.35);margin:auto}
+.modal-x{position:absolute;top:12px;right:14px;border:1px solid var(--border);background:var(--plane);color:var(--ink2);width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:14px}
+.modal h3{margin:0 4px 2px 0;font-size:20px;display:inline}
+.modal .mstat{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin:14px 0}
+.modal .mstat .tile{padding:10px 12px}
+.modal .mtbl{max-height:52vh;overflow-y:auto;border:1px solid var(--border);border-radius:10px}
 footer{margin-top:40px;padding:14px 16px;border:1px solid var(--grid);border-radius:10px;
   font-size:12px;color:var(--ink2);background:var(--surface)}
 #loading{padding:60px;text-align:center;color:var(--muted)}
@@ -177,6 +186,13 @@ footer{margin-top:40px;padding:14px 16px;border:1px solid var(--grid);border-rad
   </div>
 </div>
 
+<div id="modal" class="modal" style="display:none">
+  <div class="modal-card">
+    <button class="modal-x" id="modal-x" aria-label="Close">✕</button>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
 <script>
 "use strict";
 let DATA=null, sortK="filed", sortDir=-1, actionF="all";
@@ -189,6 +205,8 @@ const dshort=iso=>{const d=new Date(iso+"T12:00:00");return d.toLocaleDateString
 
 function badge(a){return `<span class="badge ${a}">${a==="buy"?"BUY":"SELL"}</span>`}
 function chips(cs){return (cs||[]).map(c=>`<span class="chip">${esc(c)}</span>`).join("")||"<span class='count'>—</span>"}
+const tkLink=t=>`<a class="lnk" data-stock="${esc(t)}">${esc(t)}</a>`;
+const memLink=m=>`<a class="lnk" data-member="${esc(m)}">${esc(m)}</a>`;
 
 function render(){
   const D=DATA;
@@ -197,18 +215,23 @@ function render(){
   $("#warnings").innerHTML=(D.warnings||[]).length?
     `<div class="warnbox"><b>⚠ Data warning — report incomplete.</b> ${D.warnings.map(esc).join("; ")}</div>`:"";
   // tiles
+  const fd=D.feed_days||60;
+  const recentCut=new Date(Date.now()-fd*864e5).toISOString().slice(0,10);
+  const recentN=D.feed.filter(r=>r.filed>=recentCut).length;
   const topRet=D.performers.length?D.performers[0].return_pct:null;
   $("#tiles").innerHTML=[
-    [D.feed.length,`disclosures · last ${D.feed_days||60}d`],
+    [recentN,`disclosures · last ${fd}d`],
     [D.new_count,"new since last refresh"],
+    [D.feed.length,"in 12-month history"],
     [topRet==null?"—":(topRet>0?"+":"")+topRet+"%","top LTM return"],
-    [D.trends?D.trends.window_days+"d":"—","trend window"],
   ].map(([v,l])=>`<div class="tile"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
-  // committee dropdown
+  // committee dropdown + default the feed table to the recent window
   const csel=$("#committee");
   if(csel.options.length<=1 && (D.committee_options||[]).length){
     csel.insertAdjacentHTML("beforeend",D.committee_options.map(c=>`<option>${esc(c)}</option>`).join(""));
   }
+  const rsel=$("#range");
+  if(!rsel.dataset.init){ rsel.value=String(fd); rsel.dataset.init="1"; }
   // read
   $("#read").innerHTML=(D.review||[]).map(s=>`<li>${esc(s)}</li>`).join("")||"<li>No summary for this run.</li>";
   // trends
@@ -224,7 +247,7 @@ function renderTrends(){
   if(!T){$("#sec-trends").style.display="none";return}
   $("#trends-sub").textContent=`Where multiple members move the same way · last ${T.window_days} days · counts are distinct members`;
   const list=(items,dir)=>items.length?`<table><thead><tr><th>Ticker</th><th class="r">${dir==="buy"?"Buyers":"Sellers"}</th><th class="r">${dir==="buy"?"Sellers":"Buyers"}</th><th>Sector</th></tr></thead><tbody>`+
-    items.map(t=>`<tr><td><b>${esc(t.ticker)}</b></td><td class="r num" style="color:var(--${dir==="buy"?"buy-text":"sell"});font-weight:700">${dir==="buy"?t.buyers:t.sellers}</td><td class="r num">${(dir==="buy"?t.sellers:t.buyers)||"—"}</td><td class="count">${esc(t.sector)}</td></tr>`).join("")+"</tbody></table>"
+    items.map(t=>`<tr><td><b>${tkLink(t.ticker)}</b></td><td class="r num" style="color:var(--${dir==="buy"?"buy-text":"sell"});font-weight:700">${dir==="buy"?t.buyers:t.sellers}</td><td class="r num">${(dir==="buy"?t.sellers:t.buyers)||"—"}</td><td class="count">${esc(t.sector)}</td></tr>`).join("")+"</tbody></table>"
     :`<div class="count">No multi-member cluster.</div>`;
   const maxUsd=Math.max(1,...T.sector_flows.map(s=>s.buy_usd+s.sell_usd));
   const flows=T.sector_flows.map(s=>{
@@ -290,10 +313,10 @@ function renderFeed(){
     <td class="num">${newSet.has(r.key)?'<span class="new-dot"></span>':""}${dshort(r.filed)}</td>
     <td class="num hide-m">${dshort(r.txn)}</td>
     <td>${badge(r.action)}</td>
-    <td><b>${esc(r.ticker)}</b><div class="count">${esc(r.sector||"")}</div></td>
+    <td><b>${tkLink(r.ticker)}</b><div class="count">${esc(r.sector||"")}</div></td>
     <td class="r num"><b>${fmtP(r.px_close)}</b>${r.px_low!=null?`<div class="count">${fmtP(r.px_low)}–${fmtP(r.px_high)}</div>`:""}</td>
     <td class="r num">${esc(r.amount)}</td>
-    <td class="mem"><b>${esc(r.member)}</b><span>${esc(r.chamber)}</span></td>
+    <td class="mem"><b>${memLink(r.member)}</b><span>${esc(r.chamber)}</span></td>
     <td class="hide-m">${chips(r.committees)}</td>
     <td class="r num hide-m">${r.lag_days}d</td>
   </tr>`).join("");
@@ -313,18 +336,18 @@ function renderPerf(){
     const cls=p.return_pct>=0?"up":"dn";
     const trs=p.trades.slice(0,12).map(t=>`<tr>
       <td class="num">${dshort(t.txn)}</td><td>${badge(t.action)}</td>
-      <td><b>${esc(t.ticker)}</b></td>
+      <td><b>${tkLink(t.ticker)}</b></td>
       <td class="r num">${esc(t.amount)}</td>
       <td class="r num"><b>${fmtP(t.px_close)}</b></td>
       <td class="r num hide-m">${t.px_low!=null?fmtP(t.px_low)+"–"+fmtP(t.px_high):"—"}</td>
       <td class="r num">${t.lag_days}d</td></tr>`).join("");
     const more=p.trades.length>12?`<details class="more"><summary>+ ${p.trades.length-12} more trades</summary><table><tbody>`+
-      p.trades.slice(12).map(t=>`<tr><td class="num">${dshort(t.txn)}</td><td>${badge(t.action)}</td><td><b>${esc(t.ticker)}</b></td><td class="r num">${esc(t.amount)}</td><td class="r num">${fmtP(t.px_close)}</td><td class="r num hide-m">${t.px_low!=null?fmtP(t.px_low)+"–"+fmtP(t.px_high):"—"}</td><td class="r num">${t.lag_days}d</td></tr>`).join("")+"</tbody></table></details>":"";
+      p.trades.slice(12).map(t=>`<tr><td class="num">${dshort(t.txn)}</td><td>${badge(t.action)}</td><td><b>${tkLink(t.ticker)}</b></td><td class="r num">${esc(t.amount)}</td><td class="r num">${fmtP(t.px_close)}</td><td class="r num hide-m">${t.px_low!=null?fmtP(t.px_low)+"–"+fmtP(t.px_high):"—"}</td><td class="r num">${t.lag_days}d</td></tr>`).join("")+"</tbody></table></details>":"";
     const holds=(p.open_positions||[]).length?
       `<div class="pnl"><span><b>Still holding:</b> ${p.open_positions.map(o=>esc(o.ticker)+" (~"+o.shares+" @ "+fmtP(o.avg)+")").join(", ")}</span></div>`:"";
     return `<div class="perf">
       <div class="head"><div>
-        <span class="rank">${p.rank}</span><b style="font-size:16px">${esc(p.member)}</b>
+        <span class="rank">${p.rank}</span><b style="font-size:16px">${memLink(p.member)}</b>
         <div class="count" style="margin:3px 0 6px">${esc(p.chamber)} · ${p.trade_count} trades · ${fmt$(p.notional)} notional</div>
         <div>${chips(p.committees)}</div>
       </div>
@@ -354,12 +377,88 @@ function renderAlpaca(){
   }
 }
 
+// ===== Drill-down modals =====
+function openModal(html){$("#modal-body").innerHTML=html;$("#modal").style.display="flex";document.body.style.overflow="hidden";}
+function closeModal(){$("#modal").style.display="none";$("#modal-body").innerHTML="";document.body.style.overflow="";}
+
+function tradeTable(rows,cols){
+  // cols: array of keys among date,action,ticker,member,sector,amount,price,range,lag
+  const th={date:"Date",action:"Action",ticker:"Ticker",member:"Member",sector:"Sector",
+            amount:"Amount",price:"Price",range:"Day range",lag:"Lag"};
+  const head=cols.map(c=>`<th class="${['amount','price','range','lag'].includes(c)?'r':''}">${th[c]}</th>`).join("");
+  const body=rows.map(r=>"<tr>"+cols.map(c=>{
+    if(c==="date")return `<td class="num">${dshort(r.txn)} '${r.txn.slice(2,4)}</td>`;
+    if(c==="action")return `<td>${badge(r.action)}</td>`;
+    if(c==="ticker")return `<td><b>${tkLink(r.ticker)}</b></td>`;
+    if(c==="member")return `<td class="mem"><b>${memLink(r.member)}</b><span>${esc(r.chamber)}</span></td>`;
+    if(c==="sector")return `<td class="count">${esc(r.sector||"")}</td>`;
+    if(c==="amount")return `<td class="r num">${esc(r.amount)}</td>`;
+    if(c==="price")return `<td class="r num"><b>${fmtP(r.px_close)}</b></td>`;
+    if(c==="range")return `<td class="r num count">${r.px_low!=null?fmtP(r.px_low)+"–"+fmtP(r.px_high):"—"}</td>`;
+    if(c==="lag")return `<td class="r num">${r.lag_days}d</td>`;
+    return "<td></td>";
+  }).join("")+"</tr>").join("");
+  return `<div class="mtbl"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+}
+
+function tile(v,l){return `<div class="tile"><div class="v">${v}</div><div class="l">${l}</div></div>`;}
+
+function openStock(ticker){
+  const rows=DATA.feed.filter(r=>r.ticker===ticker).sort((a,b)=>b.txn<a.txn?-1:b.txn>a.txn?1:0);
+  if(!rows.length)return;
+  const buys=rows.filter(r=>r.action==="buy"), sells=rows.filter(r=>r.action==="sell");
+  const members=new Set(rows.map(r=>r.member));
+  const latest=rows[0];
+  const sector=rows.find(r=>r.sector&&r.sector!=="Unknown");
+  openModal(`
+    <h3>${esc(ticker)}</h3> <span class="count">${sector?esc(sector.sector):""}</span>
+    <div class="count" style="margin-top:4px">Every disclosed congressional trade in this stock over the last 12 months, newest first.</div>
+    <div class="mstat">
+      ${tile(rows.length,"total trades")}
+      ${tile(buys.length,"buys")}
+      ${tile(sells.length,"sells")}
+      ${tile(members.size,"distinct members")}
+      ${tile(fmtP(latest.px_close),"last txn price")}
+    </div>
+    ${tradeTable(rows,["date","action","member","amount","price","range","lag"])}`);
+}
+
+function openMember(name){
+  const rows=DATA.feed.filter(r=>r.member===name).sort((a,b)=>b.txn<a.txn?-1:b.txn>a.txn?1:0);
+  if(!rows.length)return;
+  const buys=rows.filter(r=>r.action==="buy"), sells=rows.filter(r=>r.action==="sell");
+  const tickers=new Set(rows.map(r=>r.ticker));
+  const cmtes=rows[0].committees||[];
+  const perf=(DATA.performers||[]).find(p=>p.member===name);
+  const perfLine=perf?`<span class="count"> · ranked #${perf.rank}, ${perf.return_pct>0?"+":""}${perf.return_pct}% LTM</span>`:"";
+  openModal(`
+    <h3>${esc(name)}</h3> <span class="count">${esc(rows[0].chamber)}${rows[0].state?" · "+esc(rows[0].state):""}</span>${perfLine}
+    <div style="margin:6px 0 2px">${chips(cmtes)}</div>
+    <div class="count">Full disclosed trade history over the last 12 months, newest first.</div>
+    <div class="mstat">
+      ${tile(rows.length,"total trades")}
+      ${tile(buys.length,"buys")}
+      ${tile(sells.length,"sells")}
+      ${tile(tickers.size,"distinct tickers")}
+    </div>
+    ${tradeTable(rows,["date","action","ticker","sector","amount","price","lag"])}`);
+}
+
 // events
 document.addEventListener("click",e=>{
+  // drill-down links first
+  const sl=e.target.closest("[data-stock]");
+  if(sl){e.preventDefault();openStock(sl.dataset.stock);return;}
+  const ml=e.target.closest("[data-member]");
+  if(ml){e.preventDefault();openMember(ml.dataset.member);return;}
+  // modal close (X, or backdrop)
+  if(e.target.id==="modal-x"||e.target.id==="modal"){closeModal();return;}
+
   const p=e.target.closest(".pill[data-f]");
   if(p){document.querySelectorAll(".pill[data-f]").forEach(x=>x.classList.remove("on"));p.classList.add("on");actionF=p.dataset.f;renderFeed();return;}
   if(e.target.id==="reset"){
-    $("#q").value="";$("#chamber").value="";$("#committee").value="";$("#range").value="";
+    $("#q").value="";$("#chamber").value="";$("#committee").value="";
+    const rs=$("#range");rs.value=String(DATA.feed_days||60);
     actionF="all";document.querySelectorAll(".pill[data-f]").forEach(x=>x.classList.toggle("on",x.dataset.f==="all"));
     renderFeed();return;
   }
@@ -376,6 +475,7 @@ document.addEventListener("click",e=>{
     }else if(next&&next.classList.contains("detail")){next.remove();}
   }
 });
+document.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal();});
 ["q","chamber","committee","range"].forEach(id=>document.getElementById(id).addEventListener("input",renderFeed));
 
 async function load(){

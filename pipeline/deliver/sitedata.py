@@ -23,7 +23,7 @@ SITE_DIR = Path(__file__).resolve().parent.parent / "site"
 # DATA_OUT lets the cloud build write data.json to the repo root instead of
 # the local site/ dir. Both the writer (run.py) and prev-key loader use it.
 DATA_FILE = Path(os.environ["DATA_OUT"]) if os.environ.get("DATA_OUT") else SITE_DIR / "data.json"
-FEED_CAP = 900
+FEED_CAP = 3500  # full trailing-12-month history for the drill-down views
 
 
 def trade_key(t: Trade) -> str:
