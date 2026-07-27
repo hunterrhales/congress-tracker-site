@@ -219,10 +219,16 @@ function render(){
   const recentCut=new Date(Date.now()-fd*864e5).toISOString().slice(0,10);
   const recentN=D.feed.filter(r=>r.filed>=recentCut).length;
   const topRet=D.performers.length?D.performers[0].return_pct:null;
+  // page-level overall: combined estimated P&L across all members, and how many are up
+  const msVals=Object.values(D.member_stats||{});
+  const netPnl=msVals.reduce((s,m)=>s+(m.total_pnl||0),0);
+  const upN=msVals.filter(m=>m.total_pnl>=0).length;
+  const npUp=netPnl>=0, npCol=npUp?"var(--buy-text)":"var(--sell)";
   $("#tiles").innerHTML=[
+    [`<span style="color:${npCol}">${npUp?"+":"−"}$${Math.abs(Math.round(netPnl)).toLocaleString()}</span>`,"congress est. P&L (12mo)"],
+    [msVals.length?`${upN}/${msVals.length}`:"—","members net up"],
     [recentN,`disclosures · last ${fd}d`],
     [D.new_count,"new since last refresh"],
-    [D.feed.length,"in 12-month history"],
     [topRet==null?"—":(topRet>0?"+":"")+topRet+"%","top LTM return"],
   ].map(([v,l])=>`<div class="tile"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
   // committee dropdown + default the feed table to the recent window
@@ -382,10 +388,10 @@ function openModal(html){$("#modal-body").innerHTML=html;$("#modal").style.displ
 function closeModal(){$("#modal").style.display="none";$("#modal-body").innerHTML="";document.body.style.overflow="";}
 
 function tradeTable(rows,cols){
-  // cols: array of keys among date,action,ticker,member,sector,amount,price,range,lag
+  // cols: keys among date,action,ticker,member,sector,amount,price,range,lag,pnl,status
   const th={date:"Date",action:"Action",ticker:"Ticker",member:"Member",sector:"Sector",
-            amount:"Amount",price:"Price",range:"Day range",lag:"Lag"};
-  const head=cols.map(c=>`<th class="${['amount','price','range','lag'].includes(c)?'r':''}">${th[c]}</th>`).join("");
+            amount:"Amount",price:"Price",range:"Day range",lag:"Lag",pnl:"P&L (est.)",status:"Status"};
+  const head=cols.map(c=>`<th class="${['amount','price','range','lag','pnl'].includes(c)?'r':''}">${th[c]}</th>`).join("");
   const body=rows.map(r=>"<tr>"+cols.map(c=>{
     if(c==="date")return `<td class="num">${dshort(r.txn)} '${r.txn.slice(2,4)}</td>`;
     if(c==="action")return `<td>${badge(r.action)}</td>`;
@@ -396,6 +402,18 @@ function tradeTable(rows,cols){
     if(c==="price")return `<td class="r num"><b>${fmtP(r.px_close)}</b></td>`;
     if(c==="range")return `<td class="r num count">${r.px_low!=null?fmtP(r.px_low)+"–"+fmtP(r.px_high):"—"}</td>`;
     if(c==="lag")return `<td class="r num">${r.lag_days}d</td>`;
+    if(c==="pnl"){
+      if(r.pnl==null)return `<td class="r num count">—</td>`;
+      const up=r.pnl>=0, col=up?"var(--buy-text)":"var(--sell)";
+      const pct=r.pnl_pct!=null?` <span class="count">(${r.pnl_pct>0?"+":""}${r.pnl_pct}%)</span>`:"";
+      return `<td class="r num" style="color:${col};font-weight:600">${up?"+":"−"}$${Math.abs(r.pnl).toLocaleString()}${pct}</td>`;
+    }
+    if(c==="status"){
+      const owned=r.status==="Owned";
+      const bg=owned?"color-mix(in srgb,var(--accent) 16%,transparent)":"var(--grid)";
+      const fg=owned?"var(--accent)":"var(--ink2)";
+      return `<td><span class="badge" style="background:${bg};color:${fg}">${esc(r.status||"—")}</span></td>`;
+    }
     return "<td></td>";
   }).join("")+"</tr>").join("");
   return `<div class="mtbl"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
@@ -408,19 +426,31 @@ function openStock(ticker){
   if(!rows.length)return;
   const buys=rows.filter(r=>r.action==="buy"), sells=rows.filter(r=>r.action==="sell");
   const members=new Set(rows.map(r=>r.member));
-  const latest=rows[0];
   const sector=rows.find(r=>r.sector&&r.sector!=="Unknown");
+  const ss=(DATA.stock_stats||{})[ticker]||{};
+  // overall stock 12-month return (market fact)
+  let retTile="";
+  if(ss.ret_1y!=null){
+    const up=ss.ret_1y>=0, col=up?"var(--buy-text)":"var(--sell)";
+    retTile=`<div class="tile"><div class="v" style="color:${col}">${up?"+":""}${ss.ret_1y}%</div><div class="l">stock 12-mo return</div></div>`;
+  }
+  // combined estimated congressional P&L across all these trades
+  const combined=rows.reduce((s,r)=>s+(r.pnl||0),0);
+  const cu=combined>=0, ccol=cu?"var(--buy-text)":"var(--sell)";
+  const combinedTile=`<div class="tile"><div class="v" style="color:${ccol}">${cu?"+":"−"}$${Math.abs(Math.round(combined)).toLocaleString()}</div><div class="l">combined est. P&L</div></div>`;
   openModal(`
-    <h3>${esc(ticker)}</h3> <span class="count">${sector?esc(sector.sector):""}</span>
+    <h3>${esc(ticker)}</h3> <span class="count">${sector?esc(sector.sector):""}${ss.cur!=null?" · now "+fmtP(ss.cur):""}</span>
     <div class="count" style="margin-top:4px">Every disclosed congressional trade in this stock over the last 12 months, newest first.</div>
     <div class="mstat">
+      ${retTile}
+      ${combinedTile}
       ${tile(rows.length,"total trades")}
       ${tile(buys.length,"buys")}
       ${tile(sells.length,"sells")}
       ${tile(members.size,"distinct members")}
-      ${tile(fmtP(latest.px_close),"last txn price")}
     </div>
-    ${tradeTable(rows,["date","action","member","amount","price","range","lag"])}`);
+    <div class="count" style="margin:2px 0 6px">Stock return is the actual market move. Combined P&L sums the per-trade estimates below (buys marked to today, sells realized where a cost basis exists) — directional, not exact.</div>
+    ${tradeTable(rows,["date","action","member","amount","price","pnl","status"])}`);
 }
 
 function openMember(name){
@@ -456,7 +486,8 @@ function openMember(name){
       ${pnlTile}
     </div>
     ${pnlNote}
-    ${tradeTable(rows,["date","action","ticker","sector","amount","price","lag"])}`);
+    <div class="count" style="margin:2px 0 6px">Per-trade: buys show gain/loss to today's price (unrealized if still owned); sells show realized gain vs the average cost of earlier in-window buys ("—" when bought before this window). Estimated.</div>
+    ${tradeTable(rows,["date","action","ticker","amount","price","pnl","status"])}`);
 }
 
 // events

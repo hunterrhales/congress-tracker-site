@@ -13,11 +13,72 @@ from __future__ import annotations
 
 import json
 import os
+from collections import defaultdict
 from datetime import date, datetime
 from pathlib import Path
 
-from core import committees, sectors
+from core import committees, prices, sectors
 from core.normalize import Trade
+
+
+def _annotate_pnl(feed: list[dict]) -> None:
+    """Attach per-trade P&L and an owned/sold status to each feed row.
+
+    Runs average-cost position accounting per member per ticker, chronologically:
+      * BUY  → est P&L is mark-to-market to today's price ((now - buy) x shares);
+               status is "Owned" if the member still nets a position in that
+               ticker, else "Sold" (they later exited).
+      * SELL → est P&L is realized against the running average cost of earlier
+               in-window buys ((sell - avg cost) x shares); "—" when the shares
+               were acquired before this 12-month window (no known basis).
+               status is always "Sold".
+    Shares come from the disclosed-range midpoint / transaction-day price, so
+    every figure is an estimate and won't always reconcile to the headline total.
+    """
+    cur_cache: dict[str, float | None] = {}
+
+    def cur(tk: str):
+        if tk not in cur_cache:
+            cur_cache[tk] = prices.current_price(tk)
+        return cur_cache[tk]
+
+    by_member: dict[str, list[dict]] = defaultdict(list)
+    for r in feed:
+        by_member[r["member"]].append(r)
+
+    for rows in by_member.values():
+        held: dict[str, float] = defaultdict(float)
+        avg: dict[str, float] = defaultdict(float)
+        # First pass (oldest → newest): build running position + realized on sells.
+        for r in sorted(rows, key=lambda x: (x["txn"], x["filed"])):
+            tk, px = r["ticker"], r["px_close"]
+            sh = (r["amount_mid"] / px) if px else 0.0
+            if r["action"] == "buy":
+                if px:
+                    tot = held[tk] + sh
+                    if tot > 0:
+                        avg[tk] = (held[tk] * avg[tk] + sh * px) / tot
+                    held[tk] = tot
+            else:  # sell
+                sold = min(sh, held[tk]) if held[tk] > 0 else 0.0
+                r["_realized"] = ((px - avg[tk]) * sold
+                                  if (px and avg[tk] > 0 and sold > 0) else None)
+                held[tk] = max(0.0, held[tk] - sh)
+        # Second pass: assign display fields using final net holdings.
+        for r in rows:
+            tk, px = r["ticker"], r["px_close"]
+            sh = (r["amount_mid"] / px) if px else 0.0
+            if r["action"] == "buy":
+                c = cur(tk)
+                r["pnl"] = round((c - px) * sh, 0) if (c and px) else None
+                r["pnl_pct"] = round((c / px - 1) * 100, 1) if (c and px) else None
+                r["status"] = "Owned" if held[tk] > 1e-6 else "Sold"
+            else:
+                rp = r.pop("_realized", None)
+                r["pnl"] = round(rp, 0) if rp is not None else None
+                r["pnl_pct"] = None
+                r["status"] = "Sold"
+            r.pop("_realized", None)
 
 SITE_DIR = Path(__file__).resolve().parent.parent / "site"
 # DATA_OUT lets the cloud build write data.json to the repo root instead of
@@ -81,6 +142,20 @@ def build_payload(*, feed_trades, new_keys, ranking, trends, review,
     feed = [_trade_row(t, lookup) for t in feed_trades]
     feed.sort(key=lambda r: (r["filed"], r["txn"]), reverse=True)
     feed = feed[:FEED_CAP]
+    _annotate_pnl(feed)  # attach per-trade P&L + owned/sold status
+
+    # Per-stock market facts for the stock drill-down "overall": current price
+    # and the stock's own trailing-12-month price return.
+    from datetime import timedelta
+    yr_ago = today - timedelta(days=365)
+    stock_stats: dict[str, dict] = {}
+    for tk in {r["ticker"] for r in feed}:
+        c = prices.current_price(tk)
+        old = prices.price_on(tk, yr_ago)
+        stock_stats[tk] = {
+            "cur": round(c, 2) if c else None,
+            "ret_1y": round((c / old - 1) * 100, 1) if (c and old) else None,
+        }
 
     # Per-member simulated P&L for EVERY member (not just the top 5), so the
     # person drill-down can show how much they're up/down. Simulated: midpoint
@@ -158,6 +233,7 @@ def build_payload(*, feed_trades, new_keys, ranking, trends, review,
         "committee_options": all_cmtes,
         "feed": feed,
         "member_stats": member_stats,
+        "stock_stats": stock_stats,
         "trends": trends_out,
         "performers": performers,
         "alpaca": None if alpaca_account is None else {
