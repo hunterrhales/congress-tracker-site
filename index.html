@@ -429,10 +429,23 @@ function openMember(name){
   const buys=rows.filter(r=>r.action==="buy"), sells=rows.filter(r=>r.action==="sell");
   const tickers=new Set(rows.map(r=>r.ticker));
   const cmtes=rows[0].committees||[];
-  const perf=(DATA.performers||[]).find(p=>p.member===name);
-  const perfLine=perf?`<span class="count"> · ranked #${perf.rank}, ${perf.return_pct>0?"+":""}${perf.return_pct}% LTM</span>`:"";
+  const st=(DATA.member_stats||{})[name];
+  // Total up/down (simulated). Green if up, red if down.
+  let pnlTile="";
+  let pnlNote="";
+  if(st){
+    const up=st.total_pnl>=0;
+    const col=up?"var(--buy-text)":"var(--sell)";
+    const v=`<span style="color:${col}">${up?"+":"-"}$${Math.abs(st.total_pnl).toLocaleString()}</span>`;
+    pnlTile=`<div class="tile"><div class="v">${v}</div><div class="l">est. total P&L</div></div>`;
+    pnlNote=`<div class="pnl" style="margin:8px 0 0">
+      <span>Return <b style="color:${col}">${st.return_pct>0?"+":""}${st.return_pct}%</b> on ${fmt$(st.notional)} traded</span>
+      <span>Realized ${fmt$(st.realized)}</span>
+      <span>Unrealized ${fmt$(st.unrealized)}</span></div>
+      <div class="count" style="margin-top:4px">P&L is simulated — disclosed $ ranges valued at their midpoint and marked to today's price; excludes positions held before the window. Directional, not exact.</div>`;
+  }
   openModal(`
-    <h3>${esc(name)}</h3> <span class="count">${esc(rows[0].chamber)}${rows[0].state?" · "+esc(rows[0].state):""}</span>${perfLine}
+    <h3>${esc(name)}</h3> <span class="count">${esc(rows[0].chamber)}${rows[0].state?" · "+esc(rows[0].state):""}</span>
     <div style="margin:6px 0 2px">${chips(cmtes)}</div>
     <div class="count">Full disclosed trade history over the last 12 months, newest first.</div>
     <div class="mstat">
@@ -440,7 +453,9 @@ function openMember(name){
       ${tile(buys.length,"buys")}
       ${tile(sells.length,"sells")}
       ${tile(tickers.size,"distinct tickers")}
+      ${pnlTile}
     </div>
+    ${pnlNote}
     ${tradeTable(rows,["date","action","ticker","sector","amount","price","lag"])}`);
 }
 

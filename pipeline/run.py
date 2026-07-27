@@ -180,6 +180,7 @@ def main() -> int:
         feed_trades=feed_trades,
         new_keys=new_keys,
         ranking=ranking,
+        all_stats=stats,
         trends=trends,
         review=review,
         alpaca_account=acct,

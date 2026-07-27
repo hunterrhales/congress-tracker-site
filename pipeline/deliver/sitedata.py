@@ -74,13 +74,27 @@ def load_prev_keys() -> set[str]:
 
 def build_payload(*, feed_trades, new_keys, ranking, trends, review,
                   alpaca_account, alpaca_positions, paper_filings_skipped,
-                  data_warnings, feed_days) -> dict:
+                  data_warnings, feed_days, all_stats=None) -> dict:
     lookup = committees.load_assignments()
     today = date.today()
 
     feed = [_trade_row(t, lookup) for t in feed_trades]
     feed.sort(key=lambda r: (r["filed"], r["txn"]), reverse=True)
     feed = feed[:FEED_CAP]
+
+    # Per-member simulated P&L for EVERY member (not just the top 5), so the
+    # person drill-down can show how much they're up/down. Simulated: midpoint
+    # of disclosed range, marked to market — directional, not exact.
+    member_stats = {}
+    for name, ms in (all_stats or {}).items():
+        member_stats[name] = {
+            "return_pct": round(ms.return_pct, 1),
+            "total_pnl": round(ms.total_pnl, 0),
+            "realized": round(ms.realized_pnl, 0),
+            "unrealized": round(ms.unrealized_pnl, 0),
+            "notional": round(ms.total_notional, 0),
+            "trade_count": ms.trade_count,
+        }
 
     # committee universe for the dropdown
     all_cmtes = sorted({c for r in feed for c in r["committees"]})
@@ -143,6 +157,7 @@ def build_payload(*, feed_trades, new_keys, ranking, trends, review,
         "new_keys": sorted(new_keys),
         "committee_options": all_cmtes,
         "feed": feed,
+        "member_stats": member_stats,
         "trends": trends_out,
         "performers": performers,
         "alpaca": None if alpaca_account is None else {
